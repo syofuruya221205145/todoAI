@@ -3,7 +3,7 @@ import { useEffect, useState } from "react"
 type Todo = {
   title: string
   completed: boolean
-  mood?: string
+  mood?: number
 }
 
 function App() {
@@ -48,13 +48,18 @@ function App() {
 
     const currentTodo = newTodos[index]
 
-    // 未完了 → 完了時だけ感情入力
+    // 未完了 → 完了時だけ気分入力
     if (!currentTodo.completed) {
-      const mood = prompt(
-        "今の気分を入力してください 😊 😫 😐"
+      const mood = Number(
+        prompt(
+          "今の気分を1〜5で入力してください\n1: 😫 〜 5: 😄"
+        )
       )
 
-      currentTodo.mood = mood || ""
+      // 1〜5だけ許可
+      if (mood >= 1 && mood <= 5) {
+        currentTodo.mood = mood
+      }
     }
 
     // true / false反転
@@ -73,52 +78,109 @@ function App() {
     setTodos(newTodos)
   }
 
+  // 数字 → 絵文字変換
+  const moodEmoji = (mood?: number) => {
+    switch (mood) {
+      case 1:
+        return "😫"
+      case 2:
+        return "😢"
+      case 3:
+        return "😐"
+      case 4:
+        return "😊"
+      case 5:
+        return "😄"
+      default:
+        return ""
+    }
+  }
+
   return (
-    <div>
-      <h1>感情ログTodo</h1>
+    <div className="min-h-screen bg-gray-100 p-8">
+      <div className="mx-auto max-w-xl rounded-2xl bg-white p-6 shadow-lg">
+        {/* タイトル */}
+        <h1 className="mb-6 text-center text-4xl font-bold">
+          感情ログTodo
+        </h1>
 
-      {/* 入力欄 */}
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
+        {/* 入力欄 */}
+        <div className="mb-6 flex gap-2">
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Todoを入力"
+            className="flex-1 rounded-lg border p-3 outline-none focus:ring-2"
+          />
 
-      {/* 追加ボタン */}
-      <button onClick={addTodo}>
-        追加
-      </button>
-
-      {/* Todo一覧 */}
-      {todos.map((todo, index) => (
-        <div key={index}>
-          <p>
-            {todo.title}
-            {todo.completed ? " ✅" : ""}
-          </p>
-
-          {/* 気分表示 */}
-          {todo.mood && (
-            <p>
-              気分: {todo.mood}
-            </p>
-          )}
-
-          {/* 完了ボタン */}
           <button
-            onClick={() => toggleTodo(index)}
+            onClick={addTodo}
+            className="rounded-lg border px-5 py-3 font-bold transition hover:scale-105"
           >
-            完了
-          </button>
-
-          {/* 削除ボタン */}
-          <button
-            onClick={() => deleteTodo(index)}
-          >
-            削除
+            追加
           </button>
         </div>
-      ))}
+
+        {/* Todo一覧 */}
+        <div className="space-y-4">
+          {todos.map((todo, index) => (
+            <div
+              key={index}
+              className="rounded-xl border bg-gray-50 p-4 shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p
+                    className={`text-lg font-semibold ${
+                      todo.completed
+                        ? "text-gray-400 line-through"
+                        : ""
+                    }`}
+                  >
+                    {todo.title}
+                  </p>
+
+                  {/* 気分表示 */}
+                  {todo.mood && (
+                    <p className="mt-1 text-sm text-gray-600">
+                      気分:
+                      {" "}
+                      {todo.mood}
+                      {" "}
+                      {moodEmoji(todo.mood)}
+                    </p>
+                  )}
+                </div>
+
+                {/* ボタン */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => toggleTodo(index)}
+                    className="rounded-lg border px-3 py-2 text-sm transition hover:scale-105"
+                  >
+                    完了
+                  </button>
+
+                  <button
+                    onClick={() => deleteTodo(index)}
+                    className="rounded-lg border px-3 py-2 text-sm transition hover:scale-105"
+                  >
+                    削除
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Todoがない時 */}
+        {todos.length === 0 && (
+          <p className="mt-6 text-center text-gray-500">
+            Todoがまだありません
+          </p>
+        )}
+      </div>
     </div>
   )
 }
