@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 type Todo = {
   title: string
@@ -12,6 +12,24 @@ function App() {
 
   // 入力欄
   const [text, setText] = useState("")
+
+  // 初回読み込み
+  useEffect(() => {
+    const savedTodos =
+      localStorage.getItem("todos")
+
+    if (savedTodos) {
+      setTodos(JSON.parse(savedTodos))
+    }
+  }, [])
+
+  // todosが変わるたび保存
+  useEffect(() => {
+    localStorage.setItem(
+      "todos",
+      JSON.stringify(todos)
+    )
+  }, [todos])
 
   // Todo追加
   const addTodo = () => {
@@ -33,7 +51,6 @@ function App() {
 
     const currentTodo = newTodos[index]
 
-    // 完了時に気分入力
     if (!currentTodo.completed) {
       const mood = prompt(
         "今の気分を入力してください 😊 😫 😐"
@@ -48,7 +65,7 @@ function App() {
     setTodos(newTodos)
   }
 
-  // Todo削除
+  // 削除
   const deleteTodo = (index: number) => {
     const newTodos = todos.filter(
       (_, i) => i !== index
@@ -61,19 +78,16 @@ function App() {
     <div>
       <h1>感情ログTodo</h1>
 
-      {/* 入力欄 */}
       <input
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
 
-      {/* 追加ボタン */}
       <button onClick={addTodo}>
         追加
       </button>
 
-      {/* Todo一覧 */}
       {todos.map((todo, index) => (
         <div key={index}>
           <p>
@@ -81,21 +95,18 @@ function App() {
             {todo.completed ? " ✅" : ""}
           </p>
 
-          {/* 気分表示 */}
           {todo.mood && (
             <p>
               気分: {todo.mood}
             </p>
           )}
 
-          {/* 完了ボタン */}
           <button
             onClick={() => toggleTodo(index)}
           >
             完了
           </button>
 
-          {/* 削除ボタン */}
           <button
             onClick={() => deleteTodo(index)}
           >
