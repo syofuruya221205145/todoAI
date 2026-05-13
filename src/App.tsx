@@ -5,7 +5,7 @@ type Todo = {
   completed: boolean
   mood?: string
 }
-//test変更
+//test変更,ブランチの作成
 
 function App() {
   // Todo一覧
