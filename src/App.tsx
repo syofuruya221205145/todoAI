@@ -1,21 +1,23 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react" 
 
+// todoの内容の型を定義
 type Todo = {
-  title: string
-  completed: boolean
-  mood?: number
+  title: string //タイトル
+  completed: boolean // 達成したかどうか
+  mood?: number // 満足度
 }
 
 function App() {
   // LocalStorageから初期読み込み
   const [todos, setTodos] = useState<Todo[]>(() => {
     const savedTodos =
-      localStorage.getItem("todos")
+      localStorage.getItem("todos") // 初期値はtodosで更新,stringで返却 or NULL
 
     return savedTodos
-      ? JSON.parse(savedTodos)
-      : []
+      ? JSON.parse(savedTodos) // saveTodosに中身があるならJSON変換
+      : [] // saveTodosがNULLなら空配列を返す
   })
+// ここまで5/13
 
   // input管理
   const [text, setText] = useState("")
