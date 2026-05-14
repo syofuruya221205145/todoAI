@@ -5,10 +5,31 @@ type Todo = {
   title: string
   completed: boolean
   mood?: number
-  /** タスクの起源（仕事・依頼元など） */
-  origin?: string
+  /** 期限（ISO 8601） */
+  dueAt?: string
   /** 完了した日時（ISO 8601） */
   completedAt?: string
+}
+
+function parseDueAt(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.trim() === "") return undefined
+  const d = new Date(raw.trim())
+  if (Number.isNaN(d.getTime())) return undefined
+  return d.toISOString()
+}
+
+function isoToDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function datetimeLocalToIso(local: string): string | undefined {
+  if (local.trim() === "") return undefined
+  const t = new Date(local).getTime()
+  if (Number.isNaN(t)) return undefined
+  return new Date(local).toISOString()
 }
 
 function parseStoredTodos(raw: string | null): Todo[] {
@@ -25,10 +46,7 @@ function parseStoredTodos(raw: string | null): Todo[] {
         o.mood <= 5
           ? o.mood
           : undefined
-      const origin =
-        typeof o.origin === "string" && o.origin.trim() !== ""
-          ? o.origin.trim()
-          : undefined
+      const dueAt = parseDueAt(o.dueAt)
       const completedAt =
         typeof o.completedAt === "string" && o.completedAt.trim() !== ""
           ? o.completedAt.trim()
@@ -38,7 +56,7 @@ function parseStoredTodos(raw: string | null): Todo[] {
         title: typeof o.title === "string" ? o.title : "",
         completed: Boolean(o.completed),
         ...(mood !== undefined ? { mood } : {}),
-        ...(origin !== undefined ? { origin } : {}),
+        ...(dueAt !== undefined ? { dueAt } : {}),
         ...(completedAt !== undefined ? { completedAt } : {}),
       }
     })
@@ -52,7 +70,7 @@ function App() {
     parseStoredTodos(localStorage.getItem("todos"))
   )
   const [text, setText] = useState("")
-  const [originDraft, setOriginDraft] = useState("")
+  const [dueDraft, setDueDraft] = useState("")
   const [showCompleted, setShowCompleted] = useState(true)
   const [moodTargetId, setMoodTargetId] = useState<string | null>(null)
 
@@ -62,25 +80,22 @@ function App() {
 
   const addTodo = () => {
     if (text.trim() === "") return
-    const trimmedOrigin = originDraft.trim()
+    const dueAt = datetimeLocalToIso(dueDraft)
     const newTodo: Todo = {
       id: crypto.randomUUID(),
       title: text.trim(),
       completed: false,
-      ...(trimmedOrigin !== "" ? { origin: trimmedOrigin } : {}),
+      ...(dueAt !== undefined ? { dueAt } : {}),
     }
     setTodos((prev) => [...prev, newTodo])
     setText("")
-    setOriginDraft("")
+    setDueDraft("")
   }
 
-  const setTodoOrigin = (id: string, origin: string) => {
+  const setTodoDueAt = (id: string, localValue: string) => {
+    const dueAt = datetimeLocalToIso(localValue)
     setTodos((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? { ...t, origin: origin === "" ? undefined : origin }
-          : t
-      )
+      prev.map((t) => (t.id === id ? { ...t, dueAt } : t))
     )
   }
 
@@ -180,9 +195,9 @@ function App() {
           </p>
           {todo.completed ? (
             <>
-              {todo.origin && (
+              {todo.dueAt && (
                 <p className="mt-1 text-sm text-slate-500">
-                  起源: {todo.origin}
+                  期限: {formatCompletedAt(todo.dueAt)}
                 </p>
               )}
               {todo.completedAt && (
@@ -198,16 +213,15 @@ function App() {
             </>
           ) : (
             <div className="mt-2">
-              <label className="sr-only" htmlFor={`origin-${todo.id}`}>
-                起源
+              <label className="mb-1 block text-xs text-slate-500" htmlFor={`due-${todo.id}`}>
+                期限（任意）
               </label>
               <input
-                id={`origin-${todo.id}`}
-                type="text"
-                value={todo.origin ?? ""}
-                onChange={(e) => setTodoOrigin(todo.id, e.target.value)}
-                placeholder="起源（例: 仕事・Slack・自分）"
-                className="w-full rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
+                id={`due-${todo.id}`}
+                type="datetime-local"
+                value={todo.dueAt ? isoToDatetimeLocalValue(todo.dueAt) : ""}
+                onChange={(e) => setTodoDueAt(todo.id, e.target.value)}
+                className="w-full rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
               />
             </div>
           )}
@@ -260,14 +274,18 @@ function App() {
               追加
             </button>
           </div>
-          <input
-            type="text"
-            value={originDraft}
-            onChange={(e) => setOriginDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addTodo()}
-            placeholder="起源（任意）— 仕事・依頼・メモなど"
-            className="w-full rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
-          />
+          <div>
+            <label className="mb-1 block text-xs text-slate-500" htmlFor="new-due">
+              期限（任意）
+            </label>
+            <input
+              id="new-due"
+              type="datetime-local"
+              value={dueDraft}
+              onChange={(e) => setDueDraft(e.target.value)}
+              className="w-full rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
+            />
+          </div>
         </div>
 
         {todos.length === 0 ? (
