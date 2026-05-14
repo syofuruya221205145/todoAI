@@ -5,6 +5,10 @@ type Todo = {
   title: string
   completed: boolean
   mood?: number
+  /** タスクの起源（仕事・依頼元など） */
+  origin?: string
+  /** 完了した日時（ISO 8601） */
+  completedAt?: string
 }
 
 function parseStoredTodos(raw: string | null): Todo[] {
@@ -21,11 +25,21 @@ function parseStoredTodos(raw: string | null): Todo[] {
         o.mood <= 5
           ? o.mood
           : undefined
+      const origin =
+        typeof o.origin === "string" && o.origin.trim() !== ""
+          ? o.origin.trim()
+          : undefined
+      const completedAt =
+        typeof o.completedAt === "string" && o.completedAt.trim() !== ""
+          ? o.completedAt.trim()
+          : undefined
       return {
         id: o.id && typeof o.id === "string" ? o.id : crypto.randomUUID(),
         title: typeof o.title === "string" ? o.title : "",
         completed: Boolean(o.completed),
         ...(mood !== undefined ? { mood } : {}),
+        ...(origin !== undefined ? { origin } : {}),
+        ...(completedAt !== undefined ? { completedAt } : {}),
       }
     })
   } catch {
@@ -38,6 +52,7 @@ function App() {
     parseStoredTodos(localStorage.getItem("todos"))
   )
   const [text, setText] = useState("")
+  const [originDraft, setOriginDraft] = useState("")
   const [showCompleted, setShowCompleted] = useState(true)
   const [moodTargetId, setMoodTargetId] = useState<string | null>(null)
 
@@ -47,13 +62,26 @@ function App() {
 
   const addTodo = () => {
     if (text.trim() === "") return
+    const trimmedOrigin = originDraft.trim()
     const newTodo: Todo = {
       id: crypto.randomUUID(),
       title: text.trim(),
       completed: false,
+      ...(trimmedOrigin !== "" ? { origin: trimmedOrigin } : {}),
     }
     setTodos((prev) => [...prev, newTodo])
     setText("")
+    setOriginDraft("")
+  }
+
+  const setTodoOrigin = (id: string, origin: string) => {
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, origin: origin === "" ? undefined : origin }
+          : t
+      )
+    )
   }
 
   const toggleTodo = (id: string) => {
@@ -62,7 +90,14 @@ function App() {
     if (todo.completed) {
       setTodos((prev) =>
         prev.map((t) =>
-          t.id === id ? { ...t, completed: false, mood: undefined } : t
+          t.id === id
+            ? {
+                ...t,
+                completed: false,
+                mood: undefined,
+                completedAt: undefined,
+              }
+            : t
         )
       )
       return
@@ -75,7 +110,12 @@ function App() {
     setTodos((prev) =>
       prev.map((todo) =>
         todo.id === moodTargetId
-          ? { ...todo, completed: true, mood }
+          ? {
+              ...todo,
+              completed: true,
+              mood,
+              completedAt: new Date().toISOString(),
+            }
           : todo
       )
     )
@@ -86,6 +126,15 @@ function App() {
 
   const deleteTodo = (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  const formatCompletedAt = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleString("ja-JP", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
   }
 
   const moodEmoji = (mood?: number) => {
@@ -129,10 +178,38 @@ function App() {
           >
             {todo.title}
           </p>
-          {todo.completed && todo.mood !== undefined && (
-            <p className="mt-1 text-sm text-slate-400">
-              気分: {todo.mood} {moodEmoji(todo.mood)}
-            </p>
+          {todo.completed ? (
+            <>
+              {todo.origin && (
+                <p className="mt-1 text-sm text-slate-500">
+                  起源: {todo.origin}
+                </p>
+              )}
+              {todo.completedAt && (
+                <p className="mt-0.5 text-sm text-slate-500">
+                  完了: {formatCompletedAt(todo.completedAt)}
+                </p>
+              )}
+              {todo.mood !== undefined && (
+                <p className="mt-1 text-sm text-slate-400">
+                  気分: {todo.mood} {moodEmoji(todo.mood)}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="mt-2">
+              <label className="sr-only" htmlFor={`origin-${todo.id}`}>
+                起源
+              </label>
+              <input
+                id={`origin-${todo.id}`}
+                type="text"
+                value={todo.origin ?? ""}
+                onChange={(e) => setTodoOrigin(todo.id, e.target.value)}
+                placeholder="起源（例: 仕事・Slack・自分）"
+                className="w-full rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
+              />
+            </div>
           )}
         </div>
         <div className="flex shrink-0 gap-2">
@@ -165,22 +242,32 @@ function App() {
           完了時に気分を1〜5で記録します
         </p>
 
-        <div className="mb-8 flex gap-2">
+        <div className="mb-8 space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTodo()}
+              placeholder="Todoを入力"
+              className="min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-3 text-slate-100 outline-none ring-violet-500/40 placeholder:text-slate-500 focus:border-violet-500 focus:ring-2"
+            />
+            <button
+              type="button"
+              onClick={addTodo}
+              className="shrink-0 rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 active:scale-[0.98]"
+            >
+              追加
+            </button>
+          </div>
           <input
             type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+            value={originDraft}
+            onChange={(e) => setOriginDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addTodo()}
-            placeholder="Todoを入力"
-            className="min-w-0 flex-1 rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-3 text-slate-100 outline-none ring-violet-500/40 placeholder:text-slate-500 focus:border-violet-500 focus:ring-2"
+            placeholder="起源（任意）— 仕事・依頼・メモなど"
+            className="w-full rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
           />
-          <button
-            type="button"
-            onClick={addTodo}
-            className="shrink-0 rounded-xl bg-violet-600 px-5 py-3 font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 active:scale-[0.98]"
-          >
-            追加
-          </button>
         </div>
 
         {todos.length === 0 ? (
