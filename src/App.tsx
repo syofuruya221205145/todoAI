@@ -17,13 +17,11 @@ function App() {
       ? JSON.parse(savedTodos) // saveTodosに中身があるならJSON変換
       : [] // saveTodosがNULLなら空配列を返す
   })
-// ここまで5/13
-// ここから5/14
 
   // input管理
   const [text, setText] = useState("")
 
-  // todos変更時に保存
+  // todosが変更されるたびにLocalStorageに保存する
   useEffect(() => {
     localStorage.setItem(
       "todos",
@@ -46,31 +44,42 @@ function App() {
   }
 
   // 完了切り替え
-  const toggleTodo = (index: number) => {
-    const newTodos = [...todos]
+  
+const toggleTodo = (index: number) => {
+  const newTodos = todos.map((todo, i) => {
+    if (i !== index) return todo
 
-    const currentTodo = newTodos[index]
-
-    // 未完了 → 完了時だけ気分入力
-    if (!currentTodo.completed) {
-      const mood = Number(
-        prompt(
-          "今の気分を1〜5で入力してください\n1: 😫 〜 5: 😄"
-        )
-      )
-
-      // 1〜5だけ許可
-      if (mood >= 1 && mood <= 5) {
-        currentTodo.mood = mood
+    // すでに完了なら戻すだけ
+    if (todo.completed) {
+      return {
+        ...todo,
+        completed: false
       }
     }
 
-    // true / false反転
-    currentTodo.completed =
-      !currentTodo.completed
+    const input = prompt(
+      "今の気分を1〜5で入力してください\n1: 😫 〜 5: 😄"
+    )
 
-    setTodos(newTodos)
-  }
+    // キャンセル時
+    if (input === null) return todo
+
+    const mood = Number(input)
+
+    // 不正値ならそのまま
+    if (mood < 1 || mood > 5) {
+      return todo
+    }
+
+    return {
+      ...todo,
+      completed: true,
+      mood
+    }
+  })
+
+  setTodos(newTodos)
+}
 
   // 削除
   const deleteTodo = (index: number) => {
@@ -80,6 +89,7 @@ function App() {
 
     setTodos(newTodos)
   }
+
 
   // 数字 → 絵文字変換
   const moodEmoji = (mood?: number) => {
