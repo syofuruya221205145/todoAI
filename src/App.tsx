@@ -5,31 +5,34 @@ type Todo = {
   title: string
   completed: boolean
   mood?: number
-  /** 期限（ISO 8601） */
-  dueAt?: string
+  /** 期限 · 日にち（1〜31） */
+  dueDay?: number
+  /** 期限 · 時（0〜23、1時間単位） */
+  dueHour?: number
   /** 完了した日時（ISO 8601） */
   completedAt?: string
 }
 
-function parseDueAt(raw: unknown): string | undefined {
-  if (typeof raw !== "string" || raw.trim() === "") return undefined
-  const d = new Date(raw.trim())
-  if (Number.isNaN(d.getTime())) return undefined
-  return d.toISOString()
+function formatDueLabel(d?: number, h?: number): string | null {
+  if (
+    d === undefined ||
+    h === undefined ||
+    !Number.isInteger(d) ||
+    d < 1 ||
+    d > 31 ||
+    !Number.isInteger(h) ||
+    h < 0 ||
+    h > 23
+  ) {
+    return null
+  }
+  return `${d}日 ${h}時`
 }
 
-function isoToDatetimeLocalValue(iso: string): string {
+function legacyDueAtToDayHour(iso: string): { dueDay: number; dueHour: number } | null {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function datetimeLocalToIso(local: string): string | undefined {
-  if (local.trim() === "") return undefined
-  const t = new Date(local).getTime()
-  if (Number.isNaN(t)) return undefined
-  return new Date(local).toISOString()
+  if (Number.isNaN(d.getTime())) return null
+  return { dueDay: d.getDate(), dueHour: d.getHours() }
 }
 
 function parseStoredTodos(raw: string | null): Todo[] {
@@ -38,7 +41,7 @@ function parseStoredTodos(raw: string | null): Todo[] {
     const data = JSON.parse(raw) as unknown
     if (!Array.isArray(data)) return []
     return data.map((item): Todo => {
-      const o = item as Partial<Todo> & { id?: string }
+      const o = item as Partial<Todo> & { id?: string; dueAt?: string }
       const mood =
         typeof o.mood === "number" &&
         Number.isInteger(o.mood) &&
@@ -46,7 +49,42 @@ function parseStoredTodos(raw: string | null): Todo[] {
         o.mood <= 5
           ? o.mood
           : undefined
-      const dueAt = parseDueAt(o.dueAt)
+      let dueDay: number | undefined
+      let dueHour: number | undefined
+      if (
+        typeof o.dueDay === "number" &&
+        Number.isInteger(o.dueDay) &&
+        o.dueDay >= 1 &&
+        o.dueDay <= 31
+      ) {
+        dueDay = o.dueDay
+      }
+      if (
+        typeof o.dueHour === "number" &&
+        Number.isInteger(o.dueHour) &&
+        o.dueHour >= 0 &&
+        o.dueHour <= 23
+      ) {
+        dueHour = o.dueHour
+      }
+      if (
+        (dueDay === undefined || dueHour === undefined) &&
+        typeof o.dueAt === "string" &&
+        o.dueAt.trim() !== ""
+      ) {
+        const conv = legacyDueAtToDayHour(o.dueAt.trim())
+        if (conv) {
+          dueDay = conv.dueDay
+          dueHour = conv.dueHour
+        }
+      }
+      const dueOk =
+        dueDay !== undefined &&
+        dueHour !== undefined &&
+        dueDay >= 1 &&
+        dueDay <= 31 &&
+        dueHour >= 0 &&
+        dueHour <= 23
       const completedAt =
         typeof o.completedAt === "string" && o.completedAt.trim() !== ""
           ? o.completedAt.trim()
@@ -56,7 +94,7 @@ function parseStoredTodos(raw: string | null): Todo[] {
         title: typeof o.title === "string" ? o.title : "",
         completed: Boolean(o.completed),
         ...(mood !== undefined ? { mood } : {}),
-        ...(dueAt !== undefined ? { dueAt } : {}),
+        ...(dueOk ? { dueDay, dueHour } : {}),
         ...(completedAt !== undefined ? { completedAt } : {}),
       }
     })
@@ -70,7 +108,8 @@ function App() {
     parseStoredTodos(localStorage.getItem("todos"))
   )
   const [text, setText] = useState("")
-  const [dueDraft, setDueDraft] = useState("")
+  const [dueDayDraft, setDueDayDraft] = useState("")
+  const [dueHourDraft, setDueHourDraft] = useState("")
   const [showCompleted, setShowCompleted] = useState(true)
   const [moodTargetId, setMoodTargetId] = useState<string | null>(null)
 
@@ -80,22 +119,47 @@ function App() {
 
   const addTodo = () => {
     if (text.trim() === "") return
-    const dueAt = datetimeLocalToIso(dueDraft)
+    const d = dueDayDraft === "" ? NaN : Number(dueDayDraft)
+    const h = dueHourDraft === "" ? NaN : Number(dueHourDraft)
+    const dueOk =
+      !Number.isNaN(d) &&
+      Number.isInteger(d) &&
+      d >= 1 &&
+      d <= 31 &&
+      !Number.isNaN(h) &&
+      Number.isInteger(h) &&
+      h >= 0 &&
+      h <= 23
     const newTodo: Todo = {
       id: crypto.randomUUID(),
       title: text.trim(),
       completed: false,
-      ...(dueAt !== undefined ? { dueAt } : {}),
+      ...(dueOk ? { dueDay: d, dueHour: h } : {}),
     }
     setTodos((prev) => [...prev, newTodo])
     setText("")
-    setDueDraft("")
+    setDueDayDraft("")
+    setDueHourDraft("")
   }
 
-  const setTodoDueAt = (id: string, localValue: string) => {
-    const dueAt = datetimeLocalToIso(localValue)
+  const setTodoDue = (id: string, dayStr: string, hourStr: string) => {
+    const d = dayStr === "" ? NaN : Number(dayStr)
+    const h = hourStr === "" ? NaN : Number(hourStr)
+    const dueOk =
+      !Number.isNaN(d) &&
+      Number.isInteger(d) &&
+      d >= 1 &&
+      d <= 31 &&
+      !Number.isNaN(h) &&
+      Number.isInteger(h) &&
+      h >= 0 &&
+      h <= 23
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, dueAt } : t))
+      prev.map((t) => {
+        if (t.id !== id) return t
+        if (!dueOk) return { ...t, dueDay: undefined, dueHour: undefined }
+        return { ...t, dueDay: d, dueHour: h }
+      })
     )
   }
 
@@ -175,7 +239,9 @@ function App() {
   const moodTargetTitle =
     todos.find((t) => t.id === moodTargetId)?.title ?? ""
 
-  const renderTodoCard = (todo: Todo) => (
+  const renderTodoCard = (todo: Todo) => {
+    const dueLabel = formatDueLabel(todo.dueDay, todo.dueHour)
+    return (
     <div
       key={todo.id}
       className={`rounded-xl border p-4 shadow-sm transition ${
@@ -195,10 +261,8 @@ function App() {
           </p>
           {todo.completed ? (
             <>
-              {todo.dueAt && (
-                <p className="mt-1 text-sm text-slate-500">
-                  期限: {formatCompletedAt(todo.dueAt)}
-                </p>
+              {dueLabel && (
+                <p className="mt-1 text-sm text-slate-500">期限: {dueLabel}</p>
               )}
               {todo.completedAt && (
                 <p className="mt-0.5 text-sm text-slate-500">
@@ -213,16 +277,43 @@ function App() {
             </>
           ) : (
             <div className="mt-2">
-              <label className="mb-1 block text-xs text-slate-500" htmlFor={`due-${todo.id}`}>
-                期限（任意）
-              </label>
-              <input
-                id={`due-${todo.id}`}
-                type="datetime-local"
-                value={todo.dueAt ? isoToDatetimeLocalValue(todo.dueAt) : ""}
-                onChange={(e) => setTodoDueAt(todo.id, e.target.value)}
-                className="w-full rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
-              />
+              <p className="mb-1 text-xs text-slate-500">
+                期限（任意）· 日にちと時（1時間ごと）
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  id={`due-day-${todo.id}`}
+                  aria-label="期限の日"
+                  value={todo.dueDay !== undefined ? String(todo.dueDay) : ""}
+                  onChange={(e) =>
+                    setTodoDue(todo.id, e.target.value, String(todo.dueHour ?? ""))
+                  }
+                  className="min-w-[7rem] flex-1 rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
+                >
+                  <option value="">日: 未設定</option>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}日
+                    </option>
+                  ))}
+                </select>
+                <select
+                  id={`due-hour-${todo.id}`}
+                  aria-label="期限の時"
+                  value={todo.dueHour !== undefined ? String(todo.dueHour) : ""}
+                  onChange={(e) =>
+                    setTodoDue(todo.id, String(todo.dueDay ?? ""), e.target.value)
+                  }
+                  className="min-w-[7rem] flex-1 rounded-lg border border-slate-600/80 bg-slate-950/40 px-3 py-2 text-sm text-slate-200 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/50"
+                >
+                  <option value="">時: 未設定</option>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>
+                      {h}時
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
         </div>
@@ -244,7 +335,8 @@ function App() {
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950 px-4 py-10 text-slate-100">
@@ -275,16 +367,39 @@ function App() {
             </button>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-500" htmlFor="new-due">
-              期限（任意）
-            </label>
-            <input
-              id="new-due"
-              type="datetime-local"
-              value={dueDraft}
-              onChange={(e) => setDueDraft(e.target.value)}
-              className="w-full rounded-xl border border-slate-600 bg-slate-950/50 px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
-            />
+            <p className="mb-1 text-xs text-slate-500">
+              期限（任意）· 日にちと時（1時間ごと）
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <select
+                id="new-due-day"
+                aria-label="期限の日"
+                value={dueDayDraft}
+                onChange={(e) => setDueDayDraft(e.target.value)}
+                className="min-w-[7rem] flex-1 rounded-xl border border-slate-600 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
+              >
+                <option value="">日: 未設定</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}日
+                  </option>
+                ))}
+              </select>
+              <select
+                id="new-due-hour"
+                aria-label="期限の時"
+                value={dueHourDraft}
+                onChange={(e) => setDueHourDraft(e.target.value)}
+                className="min-w-[7rem] flex-1 rounded-xl border border-slate-600 bg-slate-950/50 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/40"
+              >
+                <option value="">時: 未設定</option>
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {h}時
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
